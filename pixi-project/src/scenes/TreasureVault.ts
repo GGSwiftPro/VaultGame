@@ -39,6 +39,9 @@ export default class TreasureVault extends Container {
   private currentStepRotation = 0;
   private attemptCount = 0;
   private attemptCounterText!: Text;
+  private timerText!: Text;
+  private timerInterval?: number;
+  private startTime = 0;
   private _wrongCodeText?: Text;
 
   constructor(protected utils: SceneUtils) {
@@ -66,10 +69,13 @@ export default class TreasureVault extends Container {
 
   async start() {
     this.attemptCount = 0;
+    this.startTime = Date.now();
     this.removeChildren();
     this.createVaultBackground();
     this.createVaultSafe();
     this.combinationService = new CombinationService();
+    this.createTimerText();
+    this.startTimer();
 
     if (!sound.exists("vault_unlock")) {
       sound.add("vault_unlock", "sounds/vault_unlock.mp3");
@@ -186,6 +192,36 @@ export default class TreasureVault extends Container {
 
     this.attemptCounterText.x = 20;
     this.attemptCounterText.y = 20;
+  }
+
+  private createTimerText() {
+    this.timerText = new Text(`Time: 0.0s`, {
+      fontFamily: "Arial",
+      fontSize: 18,
+      fill: 0x000000,
+      fontWeight: "bold",
+    });
+    this.timerText.x = 20;
+    this.timerText.y = 48;
+    this.addChild(this.timerText);
+  }
+
+  private startTimer() {
+    this.stopTimer();
+    this.updateTimerText();
+    this.timerInterval = window.setInterval(() => this.updateTimerText(), 100);
+  }
+
+  private stopTimer() {
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+      this.timerInterval = undefined;
+    }
+  }
+
+  private updateTimerText() {
+    const elapsed = (Date.now() - this.startTime) / 1000;
+    this.timerText.text = `Time: ${elapsed.toFixed(1)}s`;
   }
 
   private updatePositionIndicator() {
@@ -320,6 +356,7 @@ this.vaultHandleShadow.rotation = this.currentRotation;
 
     this.vaultHandle.interactive = false;
 
+    this.stopTimer();
     // No vault door fade-out animation on correct code
     this.createTreasureReveal();
   }
@@ -335,9 +372,31 @@ this.vaultHandleShadow.rotation = this.currentRotation;
     openBg.x = 0;
     openBg.y = 0;
     this.addChild(openBg);
+
+    // Show attempts and time in the center
+    const elapsed = (Date.now() - this.startTime) / 1000;
+    const infoText = new Text(
+      `Unlocked in ${this.attemptCount} attempts\nTime: ${elapsed.toFixed(1)}s`,
+      {
+        fontFamily: "Arial",
+        fontSize: 36,
+        fill: 0x000000,
+        fontWeight: "bold",
+        align: "center",
+      }
+    );
+    infoText.anchor.set(0.5);
+    infoText.x = window.innerWidth / 2;
+    infoText.y = window.innerHeight / 2 - 100;
+    infoText.name = "vaultResultInfo";
+    this.addChild(infoText);
+
     // After 2 seconds, restart the game for replay
     setTimeout(() => {
       this.removeChild(openBg);
+      if (this.children.includes(infoText)) {
+        this.removeChild(infoText);
+      }
       this.start();
     }, 2000); // 2 seconds before restarting
   }
