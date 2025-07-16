@@ -5,6 +5,7 @@ import {
   FederatedPointerEvent,
   Rectangle,
 } from "pixi.js";
+import { sound } from "@pixi/sound";
 import { SceneUtils } from "../core/App";
 import { centerObjects } from "../utils/misc";
 import gsap from "gsap";
@@ -64,6 +65,19 @@ export default class TreasureVault extends Container {
     this.createVaultBackground();
     this.createVaultSafe();
     this.combinationService = new CombinationService();
+
+    // Load unlock sound (if not already loaded)
+    if (!sound.exists("vault_unlock")) {
+      sound.add("vault_unlock", "sounds/vault_unlock.mp3");
+    }
+    // Load wrong code sound
+    if (!sound.exists("wrong_code")) {
+      sound.add("wrong_code", "sounds/wrong_code.mp3");
+    }
+    // Load button press sound
+    if (!sound.exists("button_press")) {
+      sound.add("button_press", "sounds/button_press.mp3");
+    }
   }
 
   private createVaultBackground() {
@@ -198,9 +212,9 @@ export default class TreasureVault extends Container {
   private createControlButtons() {
     // Create three buttons: Rotate Left, Rotate Right, Enter Number
     const buttonLabels = [
-      { label: "⟲ Left", action: () => this.rotateBy(-1) },
-      { label: "Enter Number", action: () => this.enterNumber() },
-      { label: "Right ⟳", action: () => this.rotateBy(1) },
+      { label: "⟲ Left", action: () => { sound.play("button_press"); this.rotateBy(-1); } },
+      { label: "Enter Number", action: () => { sound.play("button_press"); this.enterNumber(); } },
+      { label: "Right ⟳", action: () => { sound.play("button_press"); this.rotateBy(1); } },
     ];
 
     const buttons: Text[] = [];
@@ -305,6 +319,9 @@ export default class TreasureVault extends Container {
   private unlockVault() {
     console.log("Vault unlocked!");
 
+    // Play unlock sound
+    sound.play("vault_unlock");
+
     // Disable interaction
     this.vaultHandle.interactive = false;
 
@@ -402,6 +419,8 @@ export default class TreasureVault extends Container {
 
   // Show a red flash and 'Wrong Code!' message in the center
   private showWrongCodeFeedback() {
+    // Play wrong code sound
+    sound.play("wrong_code");
     // Flash background by animating alpha (no color change)
     if (!this.vaultBackground) return;
     gsap.fromTo(

@@ -1,4 +1,4 @@
-import { Container, Graphics } from "pixi.js";
+import { Container, Graphics, BlurFilter } from "pixi.js";
 import gsap from "gsap";
 import { VAULT_COLORS, VAULT_SETTINGS } from "../constants/TreasureVault";
 
@@ -73,21 +73,70 @@ export class TreasureAnimation extends Container {
   }
 
   public reveal(): void {
-    // Animate treasure reveal
+    // Start hidden and small
+    this.alpha = 0;
+    this.scale.set(0.6);
+
+    // Animate treasure fade-in and bounce scale
     gsap.to(this, {
-      duration: 1,
+      duration: 0.7,
       alpha: 1,
-      ease: "power2.out",
-      delay: 0.5,
+      scale: { x: 1.15, y: 1.15 },
+      ease: "back.out(2)",
+      delay: 0.3,
+      onComplete: () => {
+        gsap.to(this.scale, {
+          duration: 0.4,
+          x: 1,
+          y: 1,
+          ease: "elastic.out(1, 0.4)",
+        });
+      },
     });
 
-    // Animate shine effect
+    // Animate shine effect (spin)
     gsap.to(this.shineEffect, {
       duration: 2,
       rotation: Math.PI * 2,
       repeat: -1,
       ease: "none",
     });
+
+    // Gold glow effect (pulsing blurred circle)
+    const glow = new Graphics();
+    glow.beginFill(0xffe066, 0.5);
+    glow.drawCircle(0, 0, 70);
+    glow.endFill();
+    glow.filters = [new BlurFilter(16)];
+    this.addChildAt(glow, 0);
+    gsap.to(glow, {
+      duration: 1.2,
+      alpha: 0.8,
+      repeat: -1,
+      yoyo: true,
+      ease: "sine.inOut",
+    });
+
+    // Animate gold bars popping in with stagger
+    if (this.goldContainer?.children) {
+      this.goldContainer.children.forEach((bar, i) => {
+        bar.alpha = 0;
+        bar.scale.set(0.2);
+        gsap.to(bar.scale, {
+          x: 1,
+          y: 1,
+          duration: 0.4,
+          delay: 0.5 + i * 0.05,
+          ease: "back.out(2)",
+        });
+        gsap.to(bar, {
+          alpha: 1,
+          duration: 0.4,
+          delay: 0.5 + i * 0.05,
+          ease: "back.out(2)",
+        });
+      });
+    }
   }
 
   public destroy(): void {
