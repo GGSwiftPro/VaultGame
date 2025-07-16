@@ -6,7 +6,7 @@ export const VAULT_CONFIG: VaultConfig = {
   spokeLength: 35,
   spokeWidth: 8,
   numSpokes: 6,
-  numPositions: 9,
+  numPositions: 6,
   shadowOffset: 3,
 };
 

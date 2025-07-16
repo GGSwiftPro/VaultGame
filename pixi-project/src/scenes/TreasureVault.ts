@@ -120,7 +120,7 @@ export default class TreasureVault extends Container {
   // Removed setupHandleEvents (drag logic) for button control
 
   private createNumberLabels() {
-    const numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const numbers = [1, 2, 3, 4, 5, 6];
     const { NUMBER_RADIUS } = VAULT_SETTINGS;
     const { text } = VAULT_COLORS;
 
@@ -233,7 +233,7 @@ export default class TreasureVault extends Container {
 
       btnGfx.x =
         -BUTTON_WIDTH * 1.5 + i * (BUTTON_WIDTH + BUTTON_MARGIN);
-      btnGfx.y = 220; // Position below the vault
+      btnGfx.y = 320; // Move buttons further down to avoid overlap
 
       this.vaultContainer.addChild(btnGfx);
       buttons.push(btnText);
@@ -294,7 +294,8 @@ export default class TreasureVault extends Container {
       console.log("Combination correct! Unlocking vault...");
       this.unlockVault();
     } else {
-      console.log("Combination incorrect. Resetting...");
+      // Show 'Wrong Code!' message and flash red
+      this.showWrongCodeFeedback();
       this.attemptCount++;
       this.updateAttemptCounter();
       this.resetCombination();
@@ -393,8 +394,67 @@ export default class TreasureVault extends Container {
         this.vaultHandle.rotation = this.currentRotation;
         this.updatePositionIndicator();
       },
+      onComplete: () => {
+        this.hideWrongCodeFeedback();
+      }
     });
   }
+
+  // Show a red flash and 'Wrong Code!' message in the center
+  private showWrongCodeFeedback() {
+    // Flash background by animating alpha (no color change)
+    if (!this.vaultBackground) return;
+    gsap.fromTo(
+      this.vaultBackground,
+      { alpha: 1 },
+      {
+        alpha: 0.6,
+        duration: 0.15,
+        yoyo: true,
+        repeat: 3,
+        onComplete: () => {
+          this.vaultBackground.alpha = 1;
+        }
+      }
+    );
+
+    // Show message
+    if (!this._wrongCodeText) {
+      const msg = new Text("Wrong Code!", {
+        fontFamily: "Arial",
+        fontSize: 56,
+        fill: 0xff4444,
+        fontWeight: "bold",
+        stroke: 0xffffff,
+        strokeThickness: 6,
+      });
+      msg.anchor.set(0.5);
+      msg.x = window.innerWidth / 2;
+      msg.y = window.innerHeight / 2;
+      msg.name = "wrongCodeText";
+      this._wrongCodeText = msg;
+    }
+    if (!this.children.includes(this._wrongCodeText)) {
+      this.addChild(this._wrongCodeText);
+    }
+  }
+
+  // Hide the 'Wrong Code!' message
+  private hideWrongCodeFeedback() {
+    // Wait 3 seconds, then restore tint and remove message
+    setTimeout(() => {
+      if (this.vaultBackground) {
+        this.vaultBackground.alpha = 1;
+      }
+      if (this._wrongCodeText && this.children.includes(this._wrongCodeText)) {
+        this.removeChild(this._wrongCodeText);
+      }
+    }, 500);
+  }
+
+  // Store reference for the wrong code message
+  private _wrongCodeText?: Text;
+
 
   update(delta: number) {
     // This game is primarily event-driven, so no continuous updates are needed
