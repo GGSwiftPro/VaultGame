@@ -32,8 +32,6 @@ export default class TreasureVault extends Container {
   private combinationService!: CombinationService;
   private currentRotation = 0;
   private targetRotation = 0;
-  private isDragging = false;
-  private lastMouseAngle = 0;
   private currentStepRotation = 0;
   private attemptCount = 0;
   private attemptCounterText!: Text;
@@ -97,7 +95,8 @@ export default class TreasureVault extends Container {
 
     // Create vault handle
     this.vaultHandle = new VaultHandle();
-    this.setupHandleEvents();
+    // Remove drag events, use buttons instead
+    this.createControlButtons();
 
     // Create number labels around the vault
     this.createNumberLabels();
@@ -118,12 +117,7 @@ export default class TreasureVault extends Container {
     this.addChild(this.vaultContainer, this.attemptCounterText);
   }
 
-  private setupHandleEvents() {
-    this.vaultHandle.on("pointerdown", this.onHandlePointerDown.bind(this));
-    this.vaultHandle.on("pointermove", this.onHandlePointerMove.bind(this));
-    this.vaultHandle.on("pointerup", this.onHandlePointerUp.bind(this));
-    this.vaultHandle.on("pointerupoutside", this.onHandlePointerUp.bind(this));
-  }
+  // Removed setupHandleEvents (drag logic) for button control
 
   private createNumberLabels() {
     const numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -199,82 +193,82 @@ export default class TreasureVault extends Container {
     this.positionIndicator.endFill();
   }
 
-  private onHandlePointerDown(event: FederatedPointerEvent) {
-    this.isDragging = true;
-    this.lastMouseAngle = this.getMouseAngle(event);
-    this.vaultHandle.setGrabbing(true);
+  // Removed drag-to-rotate logic for handle. Now using buttons for rotation and entry.
+
+  private createControlButtons() {
+    // Create three buttons: Rotate Left, Rotate Right, Enter Number
+    const buttonLabels = [
+      { label: "⟲ Left", action: () => this.rotateBy(-1) },
+      { label: "Enter Number", action: () => this.enterNumber() },
+      { label: "Right ⟳", action: () => this.rotateBy(1) },
+    ];
+
+    const buttons: Text[] = [];
+    const { text } = VAULT_COLORS;
+    const BUTTON_WIDTH = 160;
+    const BUTTON_HEIGHT = 40;
+    const BUTTON_MARGIN = 16;
+    const BUTTON_FONT_SIZE = 22;
+
+    buttonLabels.forEach((btn, i) => {
+      const btnGfx = new Graphics();
+      btnGfx.beginFill(0x23272a, 0.9);
+      btnGfx.drawRoundedRect(0, 0, BUTTON_WIDTH, BUTTON_HEIGHT, 12);
+      btnGfx.endFill();
+
+      const btnText = new Text(btn.label, {
+        fontFamily: "Arial",
+        fontSize: BUTTON_FONT_SIZE,
+        fill: text,
+        fontWeight: "bold",
+      });
+      btnText.anchor.set(0.5);
+      btnText.x = BUTTON_WIDTH / 2;
+      btnText.y = BUTTON_HEIGHT / 2;
+      btnGfx.addChild(btnText);
+
+      btnGfx.interactive = true;
+      (btnGfx as any).buttonMode = true; // TypeScript: Graphics does support buttonMode at runtime
+      btnGfx.on("pointertap", btn.action);
+
+      btnGfx.x =
+        -BUTTON_WIDTH * 1.5 + i * (BUTTON_WIDTH + BUTTON_MARGIN);
+      btnGfx.y = 220; // Position below the vault
+
+      this.vaultContainer.addChild(btnGfx);
+      buttons.push(btnText);
+    });
   }
 
-  private onHandlePointerMove(event: FederatedPointerEvent) {
-    if (!this.isDragging) return;
-
-    const currentMouseAngle = this.getMouseAngle(event);
-    const angleDifference = currentMouseAngle - this.lastMouseAngle;
-
-    // Normalize angle difference to handle wrapping
-    let normalizedDiff = angleDifference;
-    if (normalizedDiff > Math.PI) normalizedDiff -= 2 * Math.PI;
-    if (normalizedDiff < -Math.PI) normalizedDiff += 2 * Math.PI;
-
-    this.targetRotation += normalizedDiff;
-    this.rotateHandle(this.targetRotation);
-
-    this.lastMouseAngle = currentMouseAngle;
-  }
-
-  private onHandlePointerUp() {
-    this.isDragging = false;
-    this.vaultHandle.setGrabbing(false);
-
-    // Calculate rotation difference from start of current step
-    const rotationDiff = this.targetRotation - this.currentStepRotation;
+  // Rotates the handle by one position (60°)
+  private rotateBy(direction: -1 | 1) {
     const { POSITION_ANGLE } = VAULT_SETTINGS;
+    this.targetRotation += POSITION_ANGLE * direction;
+    gsap.to(this, {
+      duration: 0.25,
+      currentRotation: this.targetRotation,
+      ease: "power2.out",
+      onUpdate: () => {
+        this.vaultHandle.rotation = this.currentRotation;
+        this.updatePositionIndicator();
+      },
+    });
+  }
+
+  // Submits the current position as a combination step
+  private enterNumber() {
+    const { POSITION_ANGLE } = VAULT_SETTINGS;
+    // Calculate steps moved since last entry
+    const rotationDiff = this.targetRotation - this.currentStepRotation;
     const positions = Math.round(Math.abs(rotationDiff) / POSITION_ANGLE);
     const direction = rotationDiff > 0 ? "clockwise" : "counterclockwise";
-
     if (positions > 0) {
-      // Snap to exact position
-      const exactRotation =
-        this.currentStepRotation +
-        positions * POSITION_ANGLE * (direction === "clockwise" ? 1 : -1);
-      this.targetRotation = exactRotation;
-
-      // Animate to snapped position
-      gsap.to(this, {
-        duration: 0.2,
-        currentRotation: this.targetRotation,
-        ease: "power2.out",
-        onUpdate: () => {
-          this.vaultHandle.rotation = this.currentRotation;
-          this.updatePositionIndicator();
-        },
-        onComplete: () => {
-          this.checkCombinationStep(positions, direction);
-        },
-      });
+      this.checkCombinationStep(positions, direction);
+      this.currentStepRotation = this.targetRotation;
     }
   }
 
-  private getMouseAngle(event: FederatedPointerEvent): number {
-    if (!this.vaultHandle.parent) {
-      return 0; // Fallback if parent is not available
-    }
 
-    const rect: Rectangle = this.vaultHandle.parent.getBounds();
-    const centerX = rect.x + rect.width / 2;
-    const centerY = rect.y + rect.height / 2;
-
-    const mouseX = event.global.x;
-    const mouseY = event.global.y;
-
-    return Math.atan2(mouseY - centerY, mouseX - centerX);
-  }
-
-  private rotateHandle(rotation: number) {
-    this.currentRotation = rotation;
-    this.vaultHandle.rotation = rotation;
-    this.updatePositionIndicator();
-  }
 
   private checkCombinationStep(
     steps: number,
