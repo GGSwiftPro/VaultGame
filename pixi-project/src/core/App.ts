@@ -37,9 +37,8 @@ export default class App extends Application {
     this.ticker.add((delta) => this.game.update(delta));
   }
 
-  private onResize(ev: UIEvent) {
+  private onResize = (ev: UIEvent) => {
     const target = ev.target as Window;
-
     this.game.onResize?.(target.innerWidth, target.innerHeight);
-  }
+  };
 }

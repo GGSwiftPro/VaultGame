@@ -4,6 +4,7 @@ import {
   Text,
   FederatedPointerEvent,
   Rectangle,
+  Sprite,
 } from "pixi.js";
 import { sound } from "@pixi/sound";
 import { SceneUtils } from "../core/App";
@@ -25,9 +26,11 @@ export default class TreasureVault extends Container {
 
   private vaultDoor!: VaultDoor;
   private vaultHandle!: VaultHandle;
+  private vaultHandleShadow!: Sprite;
   private vaultContainer!: Container;
-  private vaultBackground!: Graphics;
-  private vaultLightGradient!: Graphics;
+  private vaultBackground!: Sprite;
+  private vaultDoorSprite!: Sprite;
+
   private numberLabels: Text[] = [];
   private positionIndicator!: Graphics;
   private combinationService!: CombinationService;
@@ -36,6 +39,7 @@ export default class TreasureVault extends Container {
   private currentStepRotation = 0;
   private attemptCount = 0;
   private attemptCounterText!: Text;
+  private _wrongCodeText?: Text;
 
   constructor(protected utils: SceneUtils) {
     super();
@@ -51,7 +55,7 @@ export default class TreasureVault extends Container {
     const loadingText = new Text("Loading Treasure Vault...", {
       fontFamily: "Arial",
       fontSize: 32,
-      fill: text,
+      fill: 0x000000,
     });
 
     centerObjects(loadingText);
@@ -61,77 +65,83 @@ export default class TreasureVault extends Container {
   }
 
   async start() {
+    this.attemptCount = 0;
     this.removeChildren();
     this.createVaultBackground();
     this.createVaultSafe();
     this.combinationService = new CombinationService();
 
-    // Load unlock sound (if not already loaded)
     if (!sound.exists("vault_unlock")) {
       sound.add("vault_unlock", "sounds/vault_unlock.mp3");
     }
-    // Load wrong code sound
     if (!sound.exists("wrong_code")) {
       sound.add("wrong_code", "sounds/wrong_code.mp3");
     }
-    // Load button press sound
     if (!sound.exists("button_press")) {
       sound.add("button_press", "sounds/button_press.mp3");
     }
   }
 
   private createVaultBackground() {
-    const { background, lightGradient } = VAULT_COLORS;
-    const { LIGHT_GRADIENT_ALPHA } = VAULT_SETTINGS;
-
-    // Create vault room background
-    const bg = new Graphics()
-      .beginFill(background)
-      .drawRect(0, 0, window.innerWidth, window.innerHeight);
-
-    // Add some ambient lighting effect
-    const gradient = new Graphics()
-      .beginFill(lightGradient, LIGHT_GRADIENT_ALPHA)
-      .drawCircle(window.innerWidth / 2, window.innerHeight / 2, 400);
-
-    this.addChild(bg, gradient);
-
-    // Store references for resize
+    const bg = Sprite.from("provided-assets/preview/vault.jpg");
+    this.addChild(bg);
     this.vaultBackground = bg;
-    this.vaultLightGradient = gradient;
+    this.resizeVaultBgSprite();
   }
+
+  // Helper to scale and center the background image to "cover" the screen
+  private resizeVaultBgSprite() {
+  if (!this.vaultBackground) return;
+  const bg = this.vaultBackground;
+
+  bg.width = window.innerWidth;
+  bg.height = window.innerHeight;
+  bg.x = (window.innerWidth - bg.width) / 2;
+  bg.y = (window.innerHeight - bg.height) / 2;
+}
 
   private createVaultSafe() {
     this.vaultContainer = new Container();
 
-    // Create vault door
     this.vaultDoor = new VaultDoor();
+    // Add vault door sprite (between background and handle)
+    const vaultDoorSprite = Sprite.from("provided-assets/assets/door.png");
+    vaultDoorSprite.anchor.set(0.5);
+    vaultDoorSprite.scale.x = 0.23;
+    vaultDoorSprite.scale.y = 0.27; // Stretch vertically to match background
+    vaultDoorSprite.x = 10;
+    vaultDoorSprite.y = -15;
+    this.vaultDoorSprite = vaultDoorSprite;
 
-    // Create vault handle
+    // Add handle shadow sprite (below handle)
+    const vaultHandleShadow = Sprite.from("provided-assets/assets/handleShadow.png");
+    vaultHandleShadow.anchor.set(0.5);
+    vaultHandleShadow.scale.set(0.23);
+    vaultHandleShadow.x = this.vaultHandle?.x + 5 || 0;
+    vaultHandleShadow.y = this.vaultHandle?.y + 5 || 0;
+    this.vaultHandleShadow = vaultHandleShadow;
+
     this.vaultHandle = new VaultHandle();
-    // Remove drag events, use buttons instead
     this.createControlButtons();
 
-    // Create number labels around the vault
     this.createNumberLabels();
-
-    // Create position indicator
     this.createPositionIndicator();
-
-    // Create attempt counter
     this.createAttemptCounter();
 
-    // Position vault components
     this.vaultContainer.x = window.innerWidth / 2;
     this.vaultContainer.y = window.innerHeight / 2;
 
-    this.vaultContainer.addChild(this.vaultDoor, this.vaultHandle);
+    this.vaultContainer.addChild(this.vaultDoorSprite);
+    this.vaultContainer.addChild(this.vaultHandleShadow);
+    this.vaultContainer.addChild(this.vaultHandle);
+    this.vaultHandle.x = -10;
+    this.vaultHandle.y = -10;
+    this.vaultHandleShadow.x = this.vaultHandle.x + 10;
+    this.vaultHandleShadow.y = this.vaultHandle.y + 10;
     this.numberLabels.forEach((label) => this.vaultContainer.addChild(label));
     this.vaultContainer.addChild(this.positionIndicator);
     this.addChild(this.vaultContainer, this.attemptCounterText);
   }
-
-  // Removed setupHandleEvents (drag logic) for button control
 
   private createNumberLabels() {
     const numbers = [1, 2, 3, 4, 5, 6];
@@ -139,6 +149,7 @@ export default class TreasureVault extends Container {
     const { text } = VAULT_COLORS;
 
     for (let i = 0; i < numbers.length; i++) {
+      // Evenly distribute numbers, no offset
       const angle = (i * Math.PI * 2) / VAULT_CONFIG.numPositions - Math.PI / 2;
       const x = Math.cos(angle) * NUMBER_RADIUS;
       const y = Math.sin(angle) * NUMBER_RADIUS;
@@ -146,7 +157,7 @@ export default class TreasureVault extends Container {
       const label = new Text(numbers[i].toString(), {
         fontFamily: "Arial",
         fontSize: 24,
-        fill: text,
+        fill: 0x000000,
         fontWeight: "bold",
       });
 
@@ -169,7 +180,7 @@ export default class TreasureVault extends Container {
     this.attemptCounterText = new Text(`Attempts: ${this.attemptCount}`, {
       fontFamily: "Arial",
       fontSize: 20,
-      fill: text,
+      fill: 0x000000,
       fontWeight: "bold",
     });
 
@@ -183,7 +194,6 @@ export default class TreasureVault extends Container {
 
     this.positionIndicator.clear();
 
-    // Draw indicator arrow pointing to current position
     const angle = this.currentRotation - Math.PI / 2;
     const x = Math.cos(angle) * INDICATOR_RADIUS;
     const y = Math.sin(angle) * INDICATOR_RADIUS;
@@ -201,16 +211,12 @@ export default class TreasureVault extends Container {
     this.positionIndicator.lineTo(x, y);
     this.positionIndicator.endFill();
 
-    // Also draw a small circle at the center
     this.positionIndicator.beginFill(indicator);
     this.positionIndicator.drawCircle(0, 0, 3);
     this.positionIndicator.endFill();
   }
 
-  // Removed drag-to-rotate logic for handle. Now using buttons for rotation and entry.
-
   private createControlButtons() {
-    // Create three buttons: Rotate Left, Rotate Right, Enter Number
     const buttonLabels = [
       { label: "⟲ Left", action: () => { sound.play("button_press"); this.rotateBy(-1); } },
       { label: "Enter Number", action: () => { sound.play("button_press"); this.enterNumber(); } },
@@ -233,7 +239,7 @@ export default class TreasureVault extends Container {
       const btnText = new Text(btn.label, {
         fontFamily: "Arial",
         fontSize: BUTTON_FONT_SIZE,
-        fill: text,
+        fill: 0x000000,
         fontWeight: "bold",
       });
       btnText.anchor.set(0.5);
@@ -242,19 +248,17 @@ export default class TreasureVault extends Container {
       btnGfx.addChild(btnText);
 
       btnGfx.interactive = true;
-      (btnGfx as any).buttonMode = true; // TypeScript: Graphics does support buttonMode at runtime
+      (btnGfx as any).buttonMode = true;
       btnGfx.on("pointertap", btn.action);
 
-      btnGfx.x =
-        -BUTTON_WIDTH * 1.5 + i * (BUTTON_WIDTH + BUTTON_MARGIN);
-      btnGfx.y = 320; // Move buttons further down to avoid overlap
+      btnGfx.x = -BUTTON_WIDTH * 1.5 + i * (BUTTON_WIDTH + BUTTON_MARGIN);
+      btnGfx.y = 320;
 
       this.vaultContainer.addChild(btnGfx);
       buttons.push(btnText);
     });
   }
 
-  // Rotates the handle by one position (60°)
   private rotateBy(direction: -1 | 1) {
     const { POSITION_ANGLE } = VAULT_SETTINGS;
     this.targetRotation += POSITION_ANGLE * direction;
@@ -264,15 +268,14 @@ export default class TreasureVault extends Container {
       ease: "power2.out",
       onUpdate: () => {
         this.vaultHandle.rotation = this.currentRotation;
+this.vaultHandleShadow.rotation = this.currentRotation;
         this.updatePositionIndicator();
       },
     });
   }
 
-  // Submits the current position as a combination step
   private enterNumber() {
     const { POSITION_ANGLE } = VAULT_SETTINGS;
-    // Calculate steps moved since last entry
     const rotationDiff = this.targetRotation - this.currentStepRotation;
     const positions = Math.round(Math.abs(rotationDiff) / POSITION_ANGLE);
     const direction = rotationDiff > 0 ? "clockwise" : "counterclockwise";
@@ -282,20 +285,15 @@ export default class TreasureVault extends Container {
     }
   }
 
-
-
   private checkCombinationStep(
     steps: number,
     direction: "clockwise" | "counterclockwise"
   ) {
-    // Add step to combination service
     const step: CombinationStep = { steps, direction };
     const isComplete = this.combinationService.addStep(step);
 
-    // Update current step rotation for next input
     this.currentStepRotation = this.targetRotation;
 
-    // Check if we've completed all steps
     if (isComplete) {
       this.validateCombination();
     }
@@ -308,7 +306,6 @@ export default class TreasureVault extends Container {
       console.log("Combination correct! Unlocking vault...");
       this.unlockVault();
     } else {
-      // Show 'Wrong Code!' message and flash red
       this.showWrongCodeFeedback();
       this.attemptCount++;
       this.updateAttemptCounter();
@@ -319,47 +316,41 @@ export default class TreasureVault extends Container {
   private unlockVault() {
     console.log("Vault unlocked!");
 
-    // Play unlock sound
     sound.play("vault_unlock");
 
-    // Disable interaction
     this.vaultHandle.interactive = false;
 
-    // Animate vault door opening
-    gsap.to(this.vaultDoor, {
-      duration: 1,
-      alpha: 0.3,
-      ease: "power2.out",
-    });
-
-    // Create treasure reveal animation
+    // No vault door fade-out animation on correct code
     this.createTreasureReveal();
   }
 
   private createTreasureReveal() {
-    const treasureAnimation = new TreasureAnimation();
-    this.vaultContainer.addChild(treasureAnimation);
-
-    // Start the reveal animation
-    treasureAnimation.reveal();
-
-    // Auto-close after 5 seconds
+    // Remove vaultContainer and show vaultOpen.jpg as background
+    if (this.vaultContainer.parent) {
+      this.vaultContainer.parent.removeChild(this.vaultContainer);
+    }
+    const openBg = Sprite.from("provided-assets/preview/vaultOpen.jpg");
+    openBg.width = window.innerWidth;
+    openBg.height = window.innerHeight;
+    openBg.x = 0;
+    openBg.y = 0;
+    this.addChild(openBg);
+    // After 2 seconds, restart the game for replay
     setTimeout(() => {
-      this.closeVault();
-    }, VAULT_SETTINGS.AUTO_CLOSE_DELAY);
+      this.removeChild(openBg);
+      this.start();
+    }, 2000); // 2 seconds before restarting
   }
 
   private closeVault() {
     console.log("Vault closing...");
 
-    // Fade out the entire vault
     gsap.to(this.vaultContainer, {
       duration: 1,
       alpha: 0,
       scale: 0.8,
       ease: "power2.in",
       onComplete: () => {
-        // Reset the game
         this.resetGame();
       },
     });
@@ -370,36 +361,30 @@ export default class TreasureVault extends Container {
   }
 
   private resetGame() {
-    // Reset vault appearance
     this.vaultContainer.alpha = 1;
-    this.vaultContainer.scale.set(1);
+    this.vaultContainer.scale.set(this._vaultScale);
     this.vaultDoor.alpha = 1;
 
-    // Remove treasure if it exists
     const treasureContainer = this.vaultContainer.getChildByName("treasure");
     if (treasureContainer && treasureContainer instanceof TreasureAnimation) {
       treasureContainer.destroy();
       this.vaultContainer.removeChild(treasureContainer);
     }
 
-    // Re-enable interaction
     this.vaultHandle.interactive = true;
 
-    // Reset combination
     this.resetCombination();
   }
 
   private resetCombination() {
     this.combinationService.reset();
 
-    // Add "spins like crazy" effect for wrong combination
     gsap.to(this.vaultHandle, {
       duration: 1,
-      rotation: "+=720", // 2 full rotations
+      rotation: "+=720",
       ease: "power2.out",
     });
 
-    // Reset handle to starting position
     this.targetRotation = 0;
     this.currentStepRotation = 0;
     gsap.to(this, {
@@ -409,19 +394,17 @@ export default class TreasureVault extends Container {
       delay: 1,
       onUpdate: () => {
         this.vaultHandle.rotation = this.currentRotation;
+this.vaultHandleShadow.rotation = this.currentRotation;
         this.updatePositionIndicator();
       },
       onComplete: () => {
         this.hideWrongCodeFeedback();
-      }
+      },
     });
   }
 
-  // Show a red flash and 'Wrong Code!' message in the center
   private showWrongCodeFeedback() {
-    // Play wrong code sound
     sound.play("wrong_code");
-    // Flash background by animating alpha (no color change)
     if (!this.vaultBackground) return;
     gsap.fromTo(
       this.vaultBackground,
@@ -433,11 +416,10 @@ export default class TreasureVault extends Container {
         repeat: 3,
         onComplete: () => {
           this.vaultBackground.alpha = 1;
-        }
+        },
       }
     );
 
-    // Show message
     if (!this._wrongCodeText) {
       const msg = new Text("Wrong Code!", {
         fontFamily: "Arial",
@@ -458,9 +440,7 @@ export default class TreasureVault extends Container {
     }
   }
 
-  // Hide the 'Wrong Code!' message
   private hideWrongCodeFeedback() {
-    // Wait 3 seconds, then restore tint and remove message
     setTimeout(() => {
       if (this.vaultBackground) {
         this.vaultBackground.alpha = 1;
@@ -471,45 +451,41 @@ export default class TreasureVault extends Container {
     }, 500);
   }
 
-  // Store reference for the wrong code message
-  private _wrongCodeText?: Text;
-
-
   update(delta: number) {
-    // This game is primarily event-driven, so no continuous updates are needed
-    // All animations are handled by GSAP
-    // Delta time is available if future features need frame-based updates
-    void delta; // Explicitly mark as intentionally unused
+    void delta;
   }
 
+  private _vaultScale: number = 1;
+
   onResize(width: number, height: number) {
-    const { background, lightGradient } = VAULT_COLORS;
-    const { LIGHT_GRADIENT_ALPHA } = VAULT_SETTINGS;
+    // Update background image size to cover the screen
+    this.resizeVaultBgSprite();
 
-    // Update background size
-    if (this.vaultBackground) {
-      this.vaultBackground.clear();
-      this.vaultBackground.beginFill(background);
-      this.vaultBackground.drawRect(0, 0, width, height);
-    }
+    // Define margins and the base size for vault scaling
+    const MARGIN = 40;
+    const vaultBaseSize = 1000; // Adjust this value to control the vault's size
 
-    // Update light gradient position
-    if (this.vaultLightGradient) {
-      this.vaultLightGradient.clear();
-      this.vaultLightGradient.beginFill(lightGradient, LIGHT_GRADIENT_ALPHA);
-      this.vaultLightGradient.drawCircle(width / 2, height / 2, 400);
-    }
+    const scale = Math.min(
+      (width - MARGIN) / vaultBaseSize,
+      (height - MARGIN) / vaultBaseSize,
+      1
+    );
+    this._vaultScale = scale;
 
-    // Update vault container position
     if (this.vaultContainer) {
       this.vaultContainer.x = width / 2;
       this.vaultContainer.y = height / 2;
+      this.vaultContainer.scale.set(scale);
     }
 
-    // Update attempt counter position
     if (this.attemptCounterText) {
       this.attemptCounterText.x = 20;
       this.attemptCounterText.y = 20;
+    }
+
+    if (this._wrongCodeText && this.children.includes(this._wrongCodeText)) {
+      this._wrongCodeText.x = width / 2;
+      this._wrongCodeText.y = height / 2;
     }
   }
 }
